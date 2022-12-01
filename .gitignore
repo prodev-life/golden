@@ -1,0 +1,3 @@
+cmd/golden/golden
+go.sum
+.vscode

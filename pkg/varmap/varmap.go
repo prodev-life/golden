@@ -1,9 +1,9 @@
 package varmap
 
 import (
-	"appcfg/pkg/rerrors"
-	"appcfg/pkg/rtemplate"
 	"fmt"
+	"golden/pkg/rerrors"
+	"golden/pkg/rtemplate"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -133,7 +133,6 @@ func (m *VarMap) CustomUnmarshallYAML(data []byte) error {
 }
 
 func (m VarMap) SetSource(filename string) {
-	panic("test")
 	for _, v := range m {
 		v.Source = filename
 		if vm, ok := v.Value.(VarMap); ok {

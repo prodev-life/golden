@@ -1,8 +1,8 @@
 package inventory
 
 import (
-	"appcfg/pkg/manifest"
-	"appcfg/pkg/rerrors"
+	"golden/pkg/manifest"
+	"golden/pkg/rerrors"
 	"path/filepath"
 )
 

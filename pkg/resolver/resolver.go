@@ -1,8 +1,8 @@
 package resolver
 
 import (
-	"appcfg/pkg/inventory"
-	"appcfg/pkg/varmap"
+	"golden/pkg/inventory"
+	"golden/pkg/varmap"
 	"path/filepath"
 )
 

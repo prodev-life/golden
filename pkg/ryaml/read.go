@@ -1,8 +1,8 @@
 package ryaml
 
 import (
-	"appcfg/pkg/fsys"
-	"appcfg/pkg/rerrors"
+	"golden/pkg/fsys"
+	"golden/pkg/rerrors"
 	"os"
 	"strings"
 

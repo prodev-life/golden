@@ -1,8 +1,8 @@
 package inventory
 
 import (
-	"appcfg/pkg/rerrors"
-	"appcfg/pkg/ryaml"
+	"golden/pkg/rerrors"
+	"golden/pkg/ryaml"
 )
 
 type Instance struct {

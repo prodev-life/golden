@@ -132,6 +132,19 @@ func (r *Report) String() string {
 		return data[i+1][0] < data[j+1][0]
 	})
 
+	lineLen := 0
+	for _, maxLen := range colLens {
+		lineLen += maxLen
+	}
+	for _, sep := range separators {
+		lineLen += len(sep)
+	}
+
+	for i:=0; i<lineLen; i++ {
+		b.WriteByte('-')
+	}
+	b.WriteByte('\n')
+
 	for i := range data {
 		for j:=0; j < ReportColumnsCount; j++ {
 			chars, _ := b.WriteString(data[i][j])

@@ -1,7 +1,7 @@
 package varmap
 
 import (
-	"appcfg/pkg/ryaml"
+	"golden/pkg/ryaml"
 )
 
 func Read(fileBaseNameOrDir string) VarMap {

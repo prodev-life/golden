@@ -1,8 +1,9 @@
 package inventory
 
 import (
-	"appcfg/pkg/rerrors"
-	"appcfg/pkg/ryaml"
+	"golden/pkg/rerrors"
+	"golden/pkg/ryaml"
+
 	"gopkg.in/yaml.v3"
 )
 

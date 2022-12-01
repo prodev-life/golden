@@ -1,15 +1,15 @@
 package deployer
 
 import (
-	"appcfg/pkg/fsys"
-	"appcfg/pkg/inventory"
-	"appcfg/pkg/manifest"
-	"appcfg/pkg/rerrors"
-	"appcfg/pkg/rtemplate"
-	"appcfg/pkg/sh"
 	"crypto/rand"
 	_ "embed"
 	"fmt"
+	"golden/pkg/fsys"
+	"golden/pkg/inventory"
+	"golden/pkg/manifest"
+	"golden/pkg/rerrors"
+	"golden/pkg/rtemplate"
+	"golden/pkg/sh"
 	"io"
 	"math/big"
 	"os"
@@ -44,7 +44,6 @@ func New(resolvedInstanceVars map[string]map[string]interface{}, inv *inventory.
 		remoteTmpDir:         "",
 	}
 }
-
 
 func (d *Deployer) Deploy(manif manifest.Manifest, appsWhitelist []string) *Report {
 	appsWhiteMap := map[string]struct{}{}
@@ -94,12 +93,15 @@ func (d *Deployer) constructTmpDirNames() {
 	if err != nil {
 		panic(err)
 	}
-	d.localTmpDir = fmt.Sprintf(".appcfg-local-%s-%d-%x", date, pid, random)
-	d.remoteTmpDir = fmt.Sprintf(".appcfg-remote-%s-%d-%x", date, pid, random)
-	d.sshControlPath = filepath.Join(d.localTmpDir, ".appcfg-ssh-control-path")
+	d.localTmpDir = fmt.Sprintf(".golden-local-%s-%d-%x", date, pid, random)
+	d.remoteTmpDir = fmt.Sprintf(".golden-remote-%s-%d-%x", date, pid, random)
+	d.sshControlPath = filepath.Join(d.localTmpDir, ".golden-ssh-control-path")
 }
 
 func (d *Deployer) deployToHost(host string) {
+	hostData := d.inv.GetHost(host)
+	fmt.Fprintf(os.Stderr, "==> Processing instances for %s %s <==\n", host, hostData)
+
 	err := os.Mkdir(filepath.Join(d.localTmpDir, host), 0755)
 	if err != nil {
 		panic(err)
@@ -118,7 +120,6 @@ func (d *Deployer) deployToHost(host string) {
 	if err := os.RemoveAll(filepath.Join(d.localTmpDir, host)); err != nil {
 		panic(err)
 	}
-	hostData := d.inv.GetHost(host)
 
 	r.DeployStarted()
 	defer func() {
@@ -148,9 +149,9 @@ func (d *Deployer) deployToHost(host string) {
 		hostRemoteTmpDir = filepath.Join(homeDir, d.remoteTmpDir)
 		installPrefixRoot = homeDir
 	}
-
 	executor.MustDoSilentlyf("mkdir %s", hostRemoteTmpDir)
 	defer executor.MustDoSilentlyf("rm -rf %s", hostRemoteTmpDir)
+	fmt.Fprintf(os.Stderr, "%s Transferring an archive for %s\n", hostData, host)
 	executor.MustCp(packedHostPath, hostRemoteTmpDir)
 	executor.MustDoSilentlyf(
 		"tar --no-same-owner -C %s -xvzf %s.tar.gz",
@@ -166,6 +167,10 @@ func (d *Deployer) deployToHost(host string) {
 		} else {
 			deployPath = filepath.Join(installPrefixRoot, inst.InstallPrefix)
 		}
+		if strings.TrimSpace(deployPath) == "" {
+			deployPath = "."
+		}
+		fmt.Fprintf(os.Stderr, "%s unpacking %s to %s\n", hostData, inst.Name, deployPath)
 		executor.MustDoSilentlyf("mkdir -p %s", deployPath)
 		executor.MustDoSilentlyf(
 			"tar --no-same-owner -C %s -xvf %s.tar",
@@ -193,7 +198,7 @@ func (d *Deployer) parseTemplate(filename string) *template.Template {
 }
 
 func (d *Deployer) packInstance(inst *inventory.Instance, r *SingleReport) {
-
+	fmt.Fprintf(os.Stderr, "Packing instance %s\n", inst.Name)
 	r.InstancePackingStarted()
 	defer r.InstancePackingDone()
 
@@ -208,11 +213,18 @@ func (d *Deployer) packInstance(inst *inventory.Instance, r *SingleReport) {
 		panic(err)
 	}
 	for _, file := range appFiles {
-		isTemplate := strings.HasSuffix(file, ".gotmpl")
 		dstFile := strings.Replace(file, filepath.Join("apps", inst.App), instDir, 1)
+
+		isTemplate := strings.HasSuffix(file, ".gotmpl")
 		if isTemplate {
 			dstFile = dstFile[0 : len(dstFile)-len(".gotmpl")]
+		} else {
+			isIgnoredTemplate := strings.HasSuffix(file, ".gotmpl_")
+			if isIgnoredTemplate {
+				dstFile = dstFile[0 : len(dstFile)-len("_")]
+			}
 		}
+
 		dstFileDir := filepath.Dir(dstFile)
 		os.MkdirAll(dstFileDir, 0755)
 		dstFileHandle, err := os.Create(dstFile)

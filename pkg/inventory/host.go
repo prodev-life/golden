@@ -1,9 +1,9 @@
 package inventory
 
 import (
-	"appcfg/pkg/rerrors"
-	"appcfg/pkg/ryaml"
 	"fmt"
+	"golden/pkg/rerrors"
+	"golden/pkg/ryaml"
 	"os/user"
 )
 
@@ -62,6 +62,16 @@ func (h *Host) GetSshConnStr() string {
 		return h.SshConfigHost
 	}
 	return fmt.Sprintf("%s@%s", h.SshUser, h.SshHostname)
+}
+
+func (h *Host) String() string {
+	if h.IsThisUser() {
+		return "[local]"
+	}
+	if h.IsLocalHost() {
+		return fmt.Sprintf("[sudo -iu %s]", h.SshUser)
+	}
+	return fmt.Sprintf("[ssh %s]", h.GetSshConnStr())
 }
 
 type HostsCollection map[string]*Host

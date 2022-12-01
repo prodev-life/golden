@@ -1,13 +1,14 @@
 package main
 
 import (
-	"appcfg/pkg/deployer"
-	"appcfg/pkg/inventory"
-	"appcfg/pkg/manifest"
-	"appcfg/pkg/rerrors"
-	"appcfg/pkg/resolver"
-	"appcfg/pkg/rtemplate"
 	"fmt"
+	"golden/pkg/deployer"
+	"golden/pkg/git"
+	"golden/pkg/inventory"
+	"golden/pkg/manifest"
+	"golden/pkg/rerrors"
+	"golden/pkg/resolver"
+	"golden/pkg/rtemplate"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,6 +18,7 @@ import (
 
 
 func main() {
+	versionArg := pflag.BoolP("version", "v", false, "displays version of golden")
 	rootDirArg := pflag.StringP("root-dir", "r", ".", "directory with apps, manifests, instances, *_vars and others")
 	manifNameArg := pflag.StringP("manifest", "m", "",
 		"manifest name from manifests.yml or any of manifests/**.yml.\nCannot be specified with \"group\" argument.",
@@ -30,20 +32,21 @@ func main() {
 	locallyArg := pflag.BoolP("locally", "l", false,
 		"ignore ssh* instructions for hosts and deploys all files locally\nto --local-prefix/_install_prefix_ which MUST be specifed.",
 	)
-	localPrefixTemplate := pflag.StringP("local-prefix", "p", "",
-		"in conjuciton with --locally deploys all files to this prefix.\nCan be a template with all variables available.",
+	installPrefixTemplateArg := pflag.StringP("prefix", "p", "",
+		`Prepends --prefix to install_prefix for instances.
+		E. g. in conjuciton with --locally deploys all files locally to this --prefix.
+		Can be a template with builtin variables available.`,
 	)
 
 	pflag.Parse()
 
-	if *groupNameArg == "" && *manifNameArg == "" {
-		fmt.Fprintln(os.Stderr, "Either --manifest or --group must be specified")
-		pflag.Usage()
-		os.Exit(1)
+	if *versionArg {
+		fmt.Printf("golden version: %s\n", git.Version)
+		os.Exit(0)
 	}
 
-	if *locallyArg && *localPrefixTemplate == "" {
-		fmt.Fprintln(os.Stderr, "--locally requires --local-prefix to be specified")
+	if *groupNameArg == "" && *manifNameArg == "" {
+		fmt.Fprintln(os.Stderr, "Either --manifest or --group must be specified")
 		pflag.Usage()
 		os.Exit(1)
 	}
@@ -77,18 +80,20 @@ func main() {
 
 	if *locallyArg {
 		inv.SetHostsToLocalhost()
+	}
+	if *installPrefixTemplateArg != "" {
 		insts := inv.GetAllInstances()
 		overrides := map[string]string{}
-		tmpl, err := rtemplate.New("local-prefix").Parse(*localPrefixTemplate)
+		tmpl, err := rtemplate.New("--prefix").Parse(*installPrefixTemplateArg)
 		if err != nil {
-			panic(rtemplate.NewErrParse("--local-prefix", err))
+			panic(rtemplate.NewErrParse("--prefix", err))
 		}
 		for k, v := range insts {
 			vars := resolver.CreateBuiltInVars(v)
 			preparedVars := vars.SubstituteTemplatedVars()
 			prefix, err := rtemplate.ExecToString(tmpl, preparedVars)
 			if err != nil {
-				panic(rtemplate.NewErrExec("--local-prefix", "Executing --local-prefix template", err))
+				panic(rtemplate.NewErrExec("--prefix", "Executing --prefix template", err))
 			}
 			overrides[k] = filepath.Join(prefix, v.InstallPrefix)
 		}

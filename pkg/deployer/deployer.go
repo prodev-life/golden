@@ -114,7 +114,7 @@ func (d *Deployer) deployToHost(host string) {
 
 	r.HostPackingStarted()
 	packedHostPath := filepath.Join(d.localTmpDir, host) + ".tar.gz"
-	sh.MustDoSilentlyf("tar -C %s -cvzf %s %s", d.localTmpDir, packedHostPath, host)
+	sh.MustDoSilentlyf("tar -C %s -cvzpf %s %s", d.localTmpDir, packedHostPath, host)
 	r.HostPackingDone()
 
 	if err := os.RemoveAll(filepath.Join(d.localTmpDir, host)); err != nil {
@@ -154,7 +154,7 @@ func (d *Deployer) deployToHost(host string) {
 	fmt.Fprintf(os.Stderr, "%s Transferring an archive for %s\n", hostData, host)
 	executor.MustCp(packedHostPath, hostRemoteTmpDir)
 	executor.MustDoSilentlyf(
-		"tar --no-same-owner -C %s -xvzf %s.tar.gz",
+		"tar --no-same-owner -C %s -xvzpf %s.tar.gz",
 		hostRemoteTmpDir,
 		filepath.Join(hostRemoteTmpDir, host),
 	)
@@ -173,7 +173,7 @@ func (d *Deployer) deployToHost(host string) {
 		fmt.Fprintf(os.Stderr, "%s unpacking %s to %s\n", hostData, inst.Name, deployPath)
 		executor.MustDoSilentlyf("mkdir -p %s", deployPath)
 		executor.MustDoSilentlyf(
-			"tar --no-same-owner -C %s -xvf %s.tar",
+			"tar --no-same-owner -C %s -xvpf %s.tar",
 			deployPath,
 			filepath.Join(hostRemoteTmpDir, host, inst.Name),
 		)
@@ -224,13 +224,49 @@ func (d *Deployer) packInstance(inst *inventory.Instance, r *SingleReport) {
 				dstFile = dstFile[0 : len(dstFile)-len("_")]
 			}
 		}
-
 		dstFileDir := filepath.Dir(dstFile)
-		os.MkdirAll(dstFileDir, 0755)
-		dstFileHandle, err := os.Create(dstFile)
+
+		dirPathToCreate := dstFileDir[len(instDir):]
+		dirPathToCreate = strings.TrimPrefix(dirPathToCreate, string(filepath.Separator))
+		var pathComponentsToCreate []string
+		if dirPathToCreate != "" {
+			pathComponentsToCreate = strings.Split(dirPathToCreate, string(filepath.Separator))
+		}
+		pathsToCreate := make([]string, len(pathComponentsToCreate))
+		for i := 0; i < len(pathComponentsToCreate); i++ {
+			if i == 0 {
+				pathsToCreate[0] = pathComponentsToCreate[0]
+				continue
+			}
+			pathsToCreate[i] = filepath.Join(pathsToCreate[i-1], pathComponentsToCreate[i])
+		}
+		for _, pathToCreate := range pathsToCreate {
+			oldPath := filepath.Join("apps", inst.App, pathToCreate)
+			newPath := filepath.Join(instDir, pathToCreate)
+			if fsys.DoesDirExists(newPath) {
+				continue
+			}
+			fi, err := os.Stat(oldPath)
+			if err != nil {
+				panic(err)
+			}
+			oldPathPerm := fi.Mode().Perm()
+			err = os.Mkdir(newPath, oldPathPerm)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		fi, err := os.Stat(file)
 		if err != nil {
 			panic(err)
 		}
+		srcFilePerm := fi.Mode().Perm()
+		dstFileHandle, err := os.OpenFile(dstFile, os.O_CREATE | os.O_RDWR, srcFilePerm)
+		if err != nil {
+			panic(err)
+		}
+
 		defer dstFileHandle.Close()
 		if !isTemplate {
 			f, err := os.Open(file)
@@ -257,7 +293,7 @@ func (d *Deployer) packInstance(inst *inventory.Instance, r *SingleReport) {
 		continue
 	}
 
-	sh.MustDoSilentlyf("tar -C %s -cvf %s.tar .", instDir, instDir)
+	sh.MustDoSilentlyf("tar -C %s -cvpf %s.tar .", instDir, instDir)
 
 	if err := os.RemoveAll(instDir); err != nil {
 		panic(err)

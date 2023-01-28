@@ -14,30 +14,6 @@ func NewPath() *Path {
 	}
 }
 
-func (p *Path) StringJoin(els ...string) string {
-	buf := strings.Builder{}
-	pathCharsCount := p.CharsCount()
-	elsCharsCount := charsCount(els)
-	sum := pathCharsCount + elsCharsCount
-	if pathCharsCount != 0 && elsCharsCount != 0 {
-		sum++
-	}
-	buf.Grow(sum+1)
-	for i, el := range p.Elements {
-		buf.WriteString(el)
-		if i != len(p.Elements)-1 || elsCharsCount != 0 {
-			buf.WriteByte('.')
-		}
-	}
-	for i, el := range els {
-		buf.WriteString(el)
-		if i != len(els) - 1 {
-			buf.WriteByte('.')
-		}
-	}
-	return buf.String()
-}
-
 func (p *Path) CopyJoin(els ...string) *Path {
 	np := &Path{
 		Elements: make([]string, 0, len(p.Elements) + len(els)),

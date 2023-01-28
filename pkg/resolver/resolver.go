@@ -34,10 +34,11 @@ type Resolver struct {
 	instanceVars map[string]varmap.VarMap
 
 	finalInstanceVars map[string]map[string]interface{}
+	varSubstitionErrors map[string]*varmap.ErrUnresolvedVariables
 }
 
-func (r *Resolver) GetAllResolvedVars() map[string]map[string]interface{} {
-	return r.finalInstanceVars
+func (r *Resolver) GetAllResolvedVarsAndErrors() (map[string]map[string]interface{}, map[string]*varmap.ErrUnresolvedVariables) {
+	return r.finalInstanceVars, r.varSubstitionErrors
 }
 
 func (r *Resolver) GetResolvedVars(instanceName string) map[string]interface{} {
@@ -54,17 +55,19 @@ func CreateBuiltInVars(inst *inventory.Instance) varmap.VarMap {
 	return m
 }
 
-func (r *Resolver) ResolveInstance(inst *inventory.Instance) (finalVars map[string]interface{}) {
+func (r *Resolver) ResolveInstance(inst *inventory.Instance) (finalVars map[string]interface{}, varSubstitionError *varmap.ErrUnresolvedVariables) {
 	if r.finalInstanceVars == nil {
 		r.finalInstanceVars = make(map[string]map[string]interface{})
+		r.varSubstitionErrors = make(map[string]*varmap.ErrUnresolvedVariables)
 	}
 	ok := false
 	if finalVars, ok = r.finalInstanceVars[inst.Name]; ok {
-		return finalVars
+		return finalVars, varSubstitionError
 	}
 
 	defer func() {
 		r.finalInstanceVars[inst.Name] = finalVars
+		r.varSubstitionErrors[inst.Name] = varSubstitionError
 	}()
 
 	vars := varmap.New()
@@ -84,9 +87,9 @@ func (r *Resolver) ResolveInstance(inst *inventory.Instance) (finalVars map[stri
 	vars = varmap.Merge(vars, r.getInstanceVars(inst.Name), varmap.ConflictResolutionOverride)
 	vars = varmap.Merge(vars, CreateBuiltInVars(inst), varmap.ConflictResolutionError)
 
-	finalVars = vars.SubstituteTemplatedVars()
+	finalVars, varSubstitionError = vars.SubstituteTemplatedVars()
 
-	return finalVars
+	return finalVars, varSubstitionError
 }
 
 func (r *Resolver) getCommonVars() varmap.VarMap {

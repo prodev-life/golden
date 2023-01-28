@@ -90,7 +90,10 @@ func main() {
 		}
 		for k, v := range insts {
 			vars := resolver.CreateBuiltInVars(v)
-			preparedVars := vars.SubstituteTemplatedVars()
+			preparedVars, substError := vars.SubstituteTemplatedVars()
+			if substError != nil {
+				panic(err)
+			}
 			prefix, err := rtemplate.ExecToString(tmpl, preparedVars)
 			if err != nil {
 				panic(rtemplate.NewErrExec("--prefix", "Executing --prefix template", err))
@@ -129,7 +132,7 @@ func main() {
 	}
 
 	timeSpentOnResolving = time.Since(resolvingStarted)
-
-	d := deployer.New(r.GetAllResolvedVars(), inv)
+	resolvedVars, substitutionErrors := r.GetAllResolvedVarsAndErrors()
+	d := deployer.New(resolvedVars, substitutionErrors, inv)
 	rep = d.Deploy(*manif, *appsArg)
 }

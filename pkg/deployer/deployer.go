@@ -10,10 +10,12 @@ import (
 	"golden/pkg/rerrors"
 	"golden/pkg/rtemplate"
 	"golden/pkg/sh"
+	"golden/pkg/varmap"
 	"io"
 	"math/big"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/template"
 	"time"
@@ -21,6 +23,7 @@ import (
 
 type Deployer struct {
 	resolvedInstanceVars map[string]map[string]interface{}
+	substitutionErrors map[string]*varmap.ErrUnresolvedVariables
 	inv                  *inventory.Inventory
 	report               *Report
 	hosts                []string
@@ -31,9 +34,14 @@ type Deployer struct {
 	remoteTmpDir         string
 }
 
-func New(resolvedInstanceVars map[string]map[string]interface{}, inv *inventory.Inventory) *Deployer {
+func New(
+	resolvedInstanceVars map[string]map[string]interface{},
+	varSubstitionErrors map[string]*varmap.ErrUnresolvedVariables,
+	inv *inventory.Inventory,
+) *Deployer {
 	return &Deployer{
 		resolvedInstanceVars: resolvedInstanceVars,
+		substitutionErrors: varSubstitionErrors,
 		inv:                  inv,
 		report:               NewReport(),
 		hosts:                []string{},
@@ -71,6 +79,11 @@ func (d *Deployer) Deploy(manif manifest.Manifest, appsWhitelist []string) *Repo
 
 	if len(d.hosts) == 0 {
 		return d.report
+	}
+
+	sort.Slice(d.hosts, func(i, j int) bool { return d.hosts[i] < d.hosts[j]})
+	for _, insts := range d.hostToInstances {
+		sort.Slice(insts, func(i, j int) bool {return insts[i].Name < insts[j].Name})
 	}
 
 	err := os.Mkdir(d.localTmpDir, 0744)
@@ -288,7 +301,11 @@ func (d *Deployer) packInstance(inst *inventory.Instance, r *SingleReport) {
 		t := d.parseTemplate(file)
 		err = t.Execute(dstFileHandle, d.resolvedInstanceVars[inst.Name])
 		if err != nil {
-			panic(rtemplate.NewErrExec(dstFile, fmt.Sprintf("packInstance %s", inst.Name), err))
+			if substErr := d.substitutionErrors[inst.Name]; substErr != nil {
+				panic(rtemplate.NewErrExec(dstFile, fmt.Sprintf("packInstance %s. Maybe because of: %s", inst.Name, substErr), err))
+			} else {
+				panic(rtemplate.NewErrExec(dstFile, fmt.Sprintf("packInstance %s.", inst.Name), err))
+			}
 		}
 		continue
 	}

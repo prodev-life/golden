@@ -182,10 +182,13 @@ func substituteTemplatedVars(templatedVars map[*Var]struct{}, topMap map[string]
 	for tv, _ := range templatedVars {
 		v := tv.Value.(string)
 
-		tmpl := template.Must(rtemplate.New("vartemplate").Parse(v))
+		tmpl := template.Must(rtemplate.New("vartemplate").Option("missingkey=error").Parse(v))
 		buf := strings.Builder{}
 		err := tmpl.Execute(&buf, topMap)
 		if err != nil {
+			if strings.Contains(err.Error(), "no entry for key") {
+				continue
+			}
 			panic(rtemplate.NewErrExec(tv.Source, "resolving variable: "+tv.Path.String(), err))
 		}
 		newVal := buf.String()
@@ -227,14 +230,14 @@ func (topMap VarMap) getAllTemplatedVarsWithTheirMaps() map[*Var]struct{} {
 	return out
 }
 
-type ErrCyclicDependency struct {
-	vars map[*Var]struct{}
+type ErrUnresolvedVariables struct {
+	Vars map[*Var]struct{}
 }
 
-func (e *ErrCyclicDependency) NiceError() string {
+func (e *ErrUnresolvedVariables) NiceError() string {
 	buf := strings.Builder{}
-	buf.WriteString("Cyclic dependency detected within templated variables:")
-	for tv := range e.vars {
+	buf.WriteString("Possible cyclic dependency detected within templated variables or missing keys:")
+	for tv := range e.Vars {
 		absPath, err := filepath.Abs(tv.Source)
 		if err != nil {
 			panic(err)
@@ -244,17 +247,62 @@ func (e *ErrCyclicDependency) NiceError() string {
 	return buf.String()
 }
 
-func (m VarMap) SubstituteTemplatedVars() map[string]interface{} {
+func (e *ErrUnresolvedVariables) Error() string {
+	return e.NiceError()
+}
+
+func (m VarMap) SubstituteTemplatedVars() (resolvedVars map[string]interface{}, unresolvedVariables *ErrUnresolvedVariables) {
 	regmap := m.toRegularMap()
 	templatedVars := m.getAllTemplatedVarsWithTheirMaps()
 	templatedVarsCount := len(templatedVars)
 	for templatedVarsCount != 0 {
 		substituteTemplatedVars(templatedVars, regmap)
 		if len(templatedVars) == templatedVarsCount {
-			panic(&ErrCyclicDependency{templatedVars})
+			substError := &ErrUnresolvedVariables{templatedVars}
+			return FilterOutUnresolvedVars(regmap, substError), substError
 		}
 		templatedVarsCount = len(templatedVars)
 	}
 
-	return regmap
+	return regmap, nil
+}
+
+func FilterOutUnresolvedVars(vars map[string]interface{}, unresolvedVars *ErrUnresolvedVariables) map[string]interface{} {
+	newMap := make(map[string]interface{})
+
+	unresolvedVarsMap := make(map[string]*Var)
+	for v := range unresolvedVars.Vars {
+		unresolvedVarsMap[v.Path.String()] = v
+	}
+
+	newMapsQueue := make([]map[string]interface{}, 0, 30)
+	newMapsQueue = append(newMapsQueue, newMap)
+	mapsQueue := make([]map[string]interface{}, 0, 30)
+	mapsQueue = append(mapsQueue, vars)
+	pathsQueue := make([]*Path, 0, 30)
+	pathsQueue = append(pathsQueue, NewPath())
+	for len(mapsQueue) != 0 {
+		n := newMapsQueue[0]
+		newMapsQueue = newMapsQueue[1:]
+		m := mapsQueue[0]
+		mapsQueue = mapsQueue[1:]
+		p := pathsQueue[0]
+		pathsQueue = pathsQueue[1:]
+		for k, v := range m {
+			nextP := p.CopyJoin(k)
+			if _, ok := unresolvedVarsMap[nextP.String()]; ok {
+				continue
+			}
+			if nextM, ok := v.(map[string]interface{}); ok {
+				mapsQueue = append(mapsQueue, nextM)
+				pathsQueue = append(pathsQueue, nextP)
+				newSubMap := make(map[string]interface{})
+				newMapsQueue = append(newMapsQueue, newSubMap)
+				n[k] = newSubMap
+				continue
+			}
+			n[k] = v
+		}
+	}
+	return newMap
 }
